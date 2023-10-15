@@ -1,0 +1,5 @@
+/resk_ui/linux/* linguist-vendored
+/resk_ui/android/* linguist-vendored
+/resk_ui/windows/* linguist-vendored
+/resk_ui/macos/* linguist-vendored
+/resk_ui/ios/* linguist-vendored

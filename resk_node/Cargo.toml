@@ -1,0 +1,31 @@
+[package]
+name = "resk_node"
+version = "0.1.0"
+edition = "2021"
+authors = ["Alex Smith Feston229"]
+
+[dependencies]
+pretty_env_logger = "0.5.0"
+tokio = { version = "1.32", features = ["full"] }
+libp2p = { version = "0.52.3", features = [
+    "tcp",
+    "yamux",
+    "noise",
+    "quic",
+    "macros",
+    "dns",
+    "mdns",
+    "tokio",
+    "gossipsub",
+    "kad",
+] }
+log = "0.4.20"
+futures = "0.3.28"
+lazy_static = "1.4.0"
+clipboard = "0.5.0"
+serde = { version = "1.0.188", features = ["derive"] }
+serde_json = "1.0.107"
+
+[[bin]]
+name = "resk_node"
+path = "src/main.rs"

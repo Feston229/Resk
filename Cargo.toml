@@ -1,0 +1,17 @@
+[workspace]
+resolver = "2"
+members = ["resk_cli", "resk_node", "resk_android"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+repository = "https://github.com/Feston229/Resk"
+readme = "README.md"
+authors = ["Alex Smith Feston229"]
+keywords = ["p2p", "libp2p", "ecosystem"]
+categories = ["command-line-utilities"]
+
+[profile.release]
+strip = true
+lto = true
+codegen-units = 1

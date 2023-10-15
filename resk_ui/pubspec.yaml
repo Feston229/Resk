@@ -1,0 +1,31 @@
+name: resk_ui
+description: A new Flutter project.
+publish_to: 'none' # Remove this line if you wish to publish to pub.dev
+
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.1.2 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.2
+  logger: ^2.0.2+1
+  path_provider: ^2.1.1
+  permission_handler: ^11.0.0
+  flutter_background_service: ^5.0.1
+  flutter_local_notifications: ^15.1.2
+  shared_preferences: ^2.2.1
+  flutter_gen: ^5.3.2
+  animations: ^2.0.8
+  device_info_plus: 9.0.3
+  flash: ^3.0.5+1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^2.0.0
+
+flutter:
+  uses-material-design: true

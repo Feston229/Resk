@@ -1,0 +1,62 @@
+[package]
+name = "resk_cli"
+version = "0.1.0"
+edition = "2021"
+authors = ["Alex Smith Feston229"]
+
+[dependencies]
+clap = { version = "4.4.2", features = ["cargo"] }
+lazy_static = "1.4.0"
+serde = { version = "1.0.188", features = ["derive"] }
+serde_json = "1.0.107"
+# resk_node dependencies
+# I will figure out how to build it properly someday
+pretty_env_logger = "0.5.0"
+tokio = { version = "1.32", features = ["full"] }
+libp2p = { version = "0.52.3", features = [
+    "tcp",
+    "yamux",
+    "noise",
+    "quic",
+    "macros",
+    "dns",
+    "mdns",
+    "tokio",
+    "gossipsub",
+    "kad",
+] }
+log = "0.4.20"
+futures = "0.3.28"
+clipboard = "0.5.0"
+resk_node = { path = "../resk_node" }
+
+[[bin]]
+name = "resk"
+path = "src/main.rs"
+
+#[[bin]]
+#name = "resk_node"
+#path = "../resk_node/src/main.rs"
+
+[package.metadata.deb]
+depends = "ldconfig start-stop-daemon"
+assets = [
+    [
+        "target/release/resk",
+        "usr/bin",
+        "755",
+    ],
+    [
+        "target/release/resk_node",
+        "usr/bin",
+        "755",
+    ],
+    [
+        "../README.md",
+        "usr/share/doc/resk/README",
+        "644",
+    ],
+]
+# I decided to put it to .gitignore
+maintainer-scripts = "debian/"
+systemd-units = { enable = true }

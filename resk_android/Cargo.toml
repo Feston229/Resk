@@ -1,0 +1,55 @@
+# This is wrapper for resk node to run on android
+# It also used for communications between flutter app
+[package]
+name = "resk_android"
+version.workspace = true
+edition.workspace = true
+repository.workspace = true
+readme.workspace = true
+authors.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+log = "0.4"
+android_logger = "0.11"
+android-activity = { version = "0.4", features = ["native-activity"] }
+tokio = { version = "1.32.0", features = ["full"] }
+resk_node = { path = "../resk_node" }
+winit = { version = "0.28.6", features = ["android-native-activity"] }
+
+[lib]
+crate_type = ["cdylib"]
+
+[package.metadata.android]
+package = "com.resk.resk"
+build_targets = [
+    #"armv7-linux-androideabi",
+    "aarch64-linux-android",
+    #"i686-linux-android",
+    "x86_64-linux-android",
+]
+apk_name = "resk_node"
+
+# TEST
+[[package.metadata.android.uses_feature]]
+name = "android.hardware.vulkan.level"
+required = true
+version = 1
+
+[[package.metadata.android.uses_permission]]
+name = "android.permission.WRITE_EXTERNAL_STORAGE"
+
+[[package.metadata.android.uses_permission]]
+name = "android.permission.READ_EXTERNAL_STORAGE"
+
+[[package.metadata.android.uses_permission]]
+name = "android.permission.INTERNET"
+
+[package.metadata.android.signing.release]
+path = "resk-dev.keystore"
+keystore_password = "resk-dev"
+key_alias = "resk-dev-alias"
+key_password = "resk-dev"
