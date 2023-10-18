@@ -21,6 +21,8 @@ dependencies:
   animations: ^2.0.8
   device_info_plus: 9.0.3
   flash: ^3.0.5+1
+  settings_ui: ^2.0.2
+  file_picker: ^6.0.0
 
 dev_dependencies:
   flutter_test:
