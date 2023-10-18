@@ -1,12 +1,9 @@
 import 'dart:io';
 
 import 'package:device_info_plus/device_info_plus.dart';
-import 'package:flash/flash.dart';
 import 'package:flash/flash_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:resk_ui/controllers.dart';
-import 'package:resk_ui/main.dart';
 
 class ConnectivityPage extends StatefulWidget {
   const ConnectivityPage({super.key});
@@ -41,7 +38,7 @@ class ConnectivityPageState extends State<ConnectivityPage> {
     response['icon'] = icon;
     response['hostnameLabel'] = hostnameLabel;
 
-    final peerId = await sendMsgNode('local_peer_id');
+    const peerId = '123' /*await sendMsgNode('local_peer_id')*/;
     response['localPeerId'] = peerId;
 
     return response;
@@ -61,7 +58,7 @@ class ConnectivityPageState extends State<ConnectivityPage> {
 
             return Container(
               color: secondaryColor,
-              padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 30),
+              padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 40),
               child: Align(
                 alignment: Alignment.topLeft,
                 child: Column(children: [

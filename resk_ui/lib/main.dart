@@ -1,19 +1,14 @@
 import 'dart:io';
 
-import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:logger/logger.dart';
-import 'package:animations/animations.dart';
 import 'package:resk_ui/controllers.dart';
 import 'package:resk_ui/pages/connectivity.dart';
 import 'package:resk_ui/pages/add_device.dart';
 import 'package:resk_ui/pages/settings.dart';
 import 'dart:async';
 
-import 'package:flash/flash.dart';
 import 'package:flash/flash_helper.dart';
-import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
 
 final log = Logger();
 
@@ -27,7 +22,7 @@ Future<void> main() async {
   // Mobile specific settings
   if (Platform.isAndroid || Platform.isIOS) {
     await requestPermissions();
-    await initializeService();
+    //await initializeService();
     await initPlatformData();
   }
 
@@ -120,20 +115,6 @@ class _HomePageState extends State<HomePage> with RestorationMixin {
         ),
         backgroundColor: colorScheme.primary,
       ),
-/*       body: Center(
-        child: PageTransitionSwitcher(
-          transitionBuilder: (child, animation, secondaryAnimation) {
-            return FadeThroughTransition(
-              animation: animation,
-              secondaryAnimation: secondaryAnimation,
-              child: child,
-            );
-          },
-          child: _PageNavigator(
-              key: UniqueKey(),
-              item: bottomNavigationBarItems[_currentIndex.value]),
-        ),
-      ), */
       body: Center(
         child: _PageNavigator(
             key: UniqueKey(),
@@ -160,138 +141,6 @@ class _HomePageState extends State<HomePage> with RestorationMixin {
         ),
       ),
     );
-  }
-}
-
-class _NavigationDestinationView extends StatefulWidget {
-  const _NavigationDestinationView({
-    super.key,
-    required this.item,
-  });
-
-  final BottomNavigationBarItem item;
-  @override
-  State<_NavigationDestinationView> createState() =>
-      _NavigationDestinationViewState();
-}
-
-class _NavigationDestinationViewState
-    extends State<_NavigationDestinationView> {
-  BottomNavigationBarItem get item => widget.item;
-
-  Widget _connectivityPage(Color mainColor) {
-    return Container(
-        color: mainColor,
-        padding:
-            const EdgeInsets.only(left: 40, top: 30, right: 40, bottom: 30),
-        child: FutureBuilder<Map<String, Widget>>(
-          future: _deviceData,
-          builder: (BuildContext context,
-              AsyncSnapshot<Map<String, Widget>> snapshot) {
-            Widget child;
-            if (snapshot.hasData) {
-              Widget icon = snapshot.data!['icon']!;
-              Widget hostnameLabel = snapshot.data!['hostnameLabel']!;
-              Widget localPeerId = snapshot.data!['localPeerId']!;
-              child = Align(
-                alignment: Alignment.topLeft,
-                child: Column(children: [
-                  Row(children: [icon, hostnameLabel]),
-                  Row(children: [localPeerId])
-                ]),
-              );
-            } else if (snapshot.hasError) {
-              child = const Text('hasError');
-            } else {
-              child = const Align(
-                alignment: Alignment.center,
-                child: SizedBox(
-                  width: 40,
-                  height: 40,
-                  child: CircularProgressIndicator(),
-                ),
-              );
-            }
-            return child;
-          },
-        ));
-  }
-
-  Widget _addDevicePage(Color mainColor) {
-    return Container(
-      color: mainColor,
-      child: const Align(
-        alignment: Alignment.topLeft,
-        child: Row(children: [Text('Add Device')]),
-      ),
-    );
-  }
-
-  Widget _settingsPage(Color mainColor) {
-    return Container(
-      color: mainColor,
-      child: const Align(
-        alignment: Alignment.topLeft,
-        child: Row(children: [Text('Settings')]),
-      ),
-    );
-  }
-
-  final Future<Map<String, Widget>> _deviceData =
-      Future<Map<String, Widget>>(() async {
-    log.i('deviceData started');
-    Map<String, Widget> response = {};
-
-    Icon icon;
-    Text hostnameLabel;
-
-    DeviceInfoPlugin deviceInfo = DeviceInfoPlugin();
-    if (Platform.isAndroid) {
-      icon = const Icon(
-        Icons.phone_android,
-        size: 45,
-      );
-      AndroidDeviceInfo androidInfo = await deviceInfo.androidInfo;
-      hostnameLabel = Text(
-        androidInfo.model,
-        style: const TextStyle(fontSize: 22),
-      );
-    } else if (Platform.isIOS) {
-      icon = const Icon(Icons.phone_iphone);
-      hostnameLabel = const Text('ios');
-    } else {
-      icon = const Icon(Icons.laptop);
-      hostnameLabel = const Text('somick');
-    }
-    response['icon'] = icon;
-    response['hostnameLabel'] = hostnameLabel;
-
-    final peerId = await sendMsgNode('local_peer_id');
-    response['localPeerId'] = Text(
-      peerId,
-      style: const TextStyle(fontSize: 8),
-    );
-
-    return response;
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final Color mainColor = Theme.of(context).colorScheme.secondary;
-    Widget? page;
-    switch (item.label) {
-      case CONNECTIVITY_LABEL:
-        log.i('start');
-        page = _connectivityPage(mainColor);
-        log.i('finish');
-      case ADD_DEVICE_LABEL:
-        log.i('start');
-        page = _addDevicePage(mainColor);
-        log.i('finish');
-      case SETTINGS_LABEL:
-        page = _settingsPage(mainColor);
-    }
-    return page!;
   }
 }
 
