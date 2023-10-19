@@ -4,6 +4,7 @@
     target_os = "macos"
 ))]
 use clipboard::{ClipboardContext, ClipboardProvider};
+use libp2p::swarm::dial_opts::DialOpts;
 
 #[cfg(any(target_os = "android", target_os = "ios"))]
 use crate::mobile::MobileClipboard;
@@ -13,7 +14,7 @@ use crate::utils::send_udp_msg_flutter;
 use futures::{future::Either, StreamExt};
 use libp2p::core::transport;
 use libp2p::kad::store::MemoryStore;
-use libp2p::kad::Kademlia;
+use libp2p::kad::{self, Kademlia};
 use libp2p::Multiaddr;
 use libp2p::{
     core::{muxing::StreamMuxerBox, transport::OrTransport, upgrade},
@@ -173,12 +174,22 @@ pub async fn run_node(
     swarm.listen_on("/ip4/0.0.0.0/udp/0/quic-v1".parse()?)?;
     swarm.listen_on("/ip4/0.0.0.0/tcp/0".parse()?)?;
 
+    // Store OS of node in network
+    // STORE ONLY PUBLIC DATA IN KAD
+    let record = kad::Record::new(
+        kad::record::Key::new(&format!("{}_OS", local_peer_id.to_string())),
+        std::env::consts::OS.into(),
+    );
+    swarm
+        .behaviour_mut()
+        .kademlia
+        .put_record(record, kad::Quorum::One)?;
+
     // Pooling to share clipboard
     /*     tokio::spawn(start_pooling_clipboard(
         sender.clone(),
         flutter_udp_port.clone(),
     )); */
-
     // Load known peers
     let known_peers: Vec<PeerId> = load_known_peers()?;
 
@@ -230,6 +241,10 @@ pub async fn run_node(
                     event = swarm.select_next_some() => match event {
                         SwarmEvent::NewListenAddr { address, .. } => log::info!("Listening on {address:?}"),
                         SwarmEvent::Behaviour(BehaviourEvent::Mdns(mdns::Event::Discovered(peers_list))) => {
+                            peers_list.clone().into_iter().for_each(|(peer_id, addr)| {
+                                swarm.behaviour_mut().kademlia.add_address(&peer_id, addr);
+                            });
+
                             // Store active peers
                             if !peers_list.is_empty(){
                                 peers_online_system.extend(peers_list.clone());
