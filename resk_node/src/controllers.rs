@@ -246,7 +246,7 @@ pub async fn run_node(
                                 swarm
                                     .behaviour_mut()
                                     .kademlia
-                                    .put_record(record, kad::Quorum::All).expect("Failed to put record");
+                                    .put_record(record, kad::Quorum::One).expect("Failed to put record");
                                 swarm.behaviour_mut().kademlia.start_providing(key.clone()).expect("Failed to start providing");
                             });
 
