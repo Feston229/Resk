@@ -174,17 +174,6 @@ pub async fn run_node(
     swarm.listen_on("/ip4/0.0.0.0/udp/0/quic-v1".parse()?)?;
     swarm.listen_on("/ip4/0.0.0.0/tcp/0".parse()?)?;
 
-    // Store OS of node in network
-    // STORE ONLY PUBLIC DATA IN KAD
-    let record = kad::Record::new(
-        kad::record::Key::new(&format!("{}_OS", local_peer_id.to_string())),
-        std::env::consts::OS.into(),
-    );
-    swarm
-        .behaviour_mut()
-        .kademlia
-        .put_record(record, kad::Quorum::One)?;
-
     // Pooling to share clipboard
     /*     tokio::spawn(start_pooling_clipboard(
         sender.clone(),
@@ -227,6 +216,11 @@ pub async fn run_node(
                                     "local_peer_id" => {
                                         response.push_str(&local_peer_id.to_string());
                                     }
+                                    "get_peer_os" => {
+                                        let peer_id = request.split(":").nth(1).unwrap();
+                                        let key = kad::record::Key::new(&format!("{}_OS", peer_id));
+                                        swarm.behaviour_mut().kademlia.get_record(key);
+                                    }
                                     _ => {
                                         response.push_str("Incorrect request");},
 
@@ -242,7 +236,17 @@ pub async fn run_node(
                         SwarmEvent::NewListenAddr { address, .. } => log::info!("Listening on {address:?}"),
                         SwarmEvent::Behaviour(BehaviourEvent::Mdns(mdns::Event::Discovered(peers_list))) => {
                             peers_list.clone().into_iter().for_each(|(peer_id, addr)| {
+                                // Store OS of node in network
+                                // STORE ONLY PUBLIC DATA IN KAD
                                 swarm.behaviour_mut().kademlia.add_address(&peer_id, addr);
+                                let key =
+                                    kad::record::Key::new(&format!("{}_OS", local_peer_id.to_string()));
+                                let record =
+                                    kad::Record::new(key.clone(), std::env::consts::OS.as_bytes().to_vec());
+                                swarm
+                                    .behaviour_mut()
+                                    .kademlia
+                                    .put_record(record, kad::Quorum::One).expect("Failed to put record");
                             });
 
                             // Store active peers
@@ -278,6 +282,56 @@ pub async fn run_node(
                             let msg_str = String::from_utf8_lossy(&message.data);
                             if message.topic.clone() == update_topic.hash() {
                                 clipboard.set_contents(msg_str.to_string())?;
+                            }
+                        }
+                        SwarmEvent::Behaviour(BehaviourEvent::Kademlia(kad::KademliaEvent::OutboundQueryProgressed {result, ..})) => {
+                            match result {
+                                kad::QueryResult::GetProviders(Ok(kad::GetProvidersOk::FoundProviders { key, providers, .. })) => {
+                        for peer in providers {
+                            println!(
+                                "Peer {peer:?} provides key {:?}",
+                                std::str::from_utf8(key.as_ref()).unwrap()
+                            );
+                        }
+                    }
+                    kad::QueryResult::GetProviders(Err(err)) => {
+                        eprintln!("Failed to get providers: {err:?}");
+                    }
+                    kad::QueryResult::GetRecord(Ok(
+                        kad::GetRecordOk::FoundRecord(kad::PeerRecord {
+                            record: kad::Record { key, value, .. },
+                            ..
+                        })
+                    )) => {
+                        println!(
+                            "Got record {:?} {:?}",
+                            std::str::from_utf8(key.as_ref()).unwrap(),
+                            std::str::from_utf8(&value).unwrap(),
+                        );
+                    }
+                    kad::QueryResult::GetRecord(Ok(_)) => {}
+                    kad::QueryResult::GetRecord(Err(err)) => {
+                        eprintln!("Failed to get record: {err:?}");
+                    }
+                    kad::QueryResult::PutRecord(Ok(kad::PutRecordOk { key })) => {
+                        println!(
+                            "Successfully put record {:?}",
+                            std::str::from_utf8(key.as_ref()).unwrap()
+                        );
+                    }
+                    kad::QueryResult::PutRecord(Err(err)) => {
+                        eprintln!("Failed to put record: {err:?}");
+                    }
+                    kad::QueryResult::StartProviding(Ok(kad::AddProviderOk { key })) => {
+                        println!(
+                            "Successfully put provider record {:?}",
+                            std::str::from_utf8(key.as_ref()).unwrap()
+                        );
+                    }
+                    kad::QueryResult::StartProviding(Err(err)) => {
+                        eprintln!("Failed to put provider record: {err:?}");
+                    }
+                    _ => {}
                             }
                         }
                         _ => {}

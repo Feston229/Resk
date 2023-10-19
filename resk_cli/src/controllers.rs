@@ -1,5 +1,6 @@
 use lazy_static::lazy_static;
 use serde_json::{Map, Value};
+use std::fmt::format;
 use std::path::{self, Path, PathBuf};
 use std::{env, error::Error};
 use tokio::net::UdpSocket;
@@ -31,11 +32,13 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
                 .arg(Arg::new("peer_id").required(true)),
         )
         .subcommand(Command::new("local").about("Get local peer id"))
+        .subcommand(
+            Command::new("get_peer_os").arg(Arg::new("peer_id").required(true)),
+        )
         .subcommand_required(true)
         .get_matches();
     alive_ping.await?;
     if let Some(_matches) = matches.subcommand_matches("get_peers") {
-        println!("block1");
         get_peers().await?;
     }
     if let Some(matches) = matches.subcommand_matches("add_peer") {
@@ -44,6 +47,10 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
     }
     if let Some(_matches) = matches.subcommand_matches("local") {
         get_local_peer_id().await?
+    }
+    if let Some(matches) = matches.subcommand_matches("get_peer_os") {
+        let peer_id = matches.get_one::<String>("peer_id").unwrap();
+        get_peer_os(peer_id).await?
     }
     Ok(())
 }
@@ -121,5 +128,12 @@ fn load_data_map(path: &PathBuf) -> Result<Map<String, Value>, Box<dyn Error>> {
 async fn get_local_peer_id() -> Result<(), Box<dyn Error>> {
     let response = send_msg("local_peer_id:".to_string()).await?;
     println!("Local peer id is -> {response}");
+    Ok(())
+}
+
+async fn get_peer_os(peer_id: &String) -> Result<(), Box<dyn Error>> {
+    let request = format!("get_peer_os:{}", peer_id);
+    let response = send_msg(request).await?;
+    println!("OS of peer {} -> {}", peer_id, response);
     Ok(())
 }
