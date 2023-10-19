@@ -243,11 +243,10 @@ pub async fn run_node(
                                     kad::record::Key::new(&format!("{}_OS", local_peer_id.to_string()));
                                 let record =
                                     kad::Record::new(key.clone(), std::env::consts::OS.as_bytes().to_vec());
-                                swarm.behaviour_mut().kademlia.start_providing(key.clone()).expect("Failed to start providing");
                                 swarm
                                     .behaviour_mut()
                                     .kademlia
-                                    .put_record(record, kad::Quorum::One).expect("Failed to put record");
+                                    .put_record(record, kad::Quorum::All).expect("Failed to put record");
                             });
 
                             // Store active peers
