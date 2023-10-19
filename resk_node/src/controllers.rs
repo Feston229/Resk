@@ -239,15 +239,6 @@ pub async fn run_node(
                                 // Store OS of node in network
                                 // STORE ONLY PUBLIC DATA IN KAD
                                 swarm.behaviour_mut().kademlia.add_address(&peer_id, addr);
-                                let key =
-                                    kad::record::Key::new(&format!("{}_OS", local_peer_id.to_string()));
-                                let record =
-                                    kad::Record::new(key.clone(), std::env::consts::OS.as_bytes().to_vec());
-                                swarm
-                                    .behaviour_mut()
-                                    .kademlia
-                                    .put_record(record, kad::Quorum::One).expect("Failed to put record");
-                                swarm.behaviour_mut().kademlia.start_providing(key.clone()).expect("Failed to start providing");
                             });
 
                             // Store active peers
@@ -264,6 +255,16 @@ pub async fn run_node(
                                 }
                                 peers_online.extend(peers_list);
                             }
+                            sleep(Duration::from_secs(3)).await;
+                            let key =
+                                kad::record::Key::new(&format!("{}_OS", local_peer_id.to_string()));
+                            let record =
+                                kad::Record::new(key.clone(), std::env::consts::OS.as_bytes().to_vec());
+                            swarm
+                                .behaviour_mut()
+                                .kademlia
+                                .put_record(record, kad::Quorum::One).expect("Failed to put record");
+                            swarm.behaviour_mut().kademlia.start_providing(key.clone()).expect("Failed to start providing");
                         }
                         SwarmEvent::Behaviour(BehaviourEvent::Mdns(mdns::Event::Expired(peers_list))) => {
                             // Remove expired peers: it will be every 3 sec
