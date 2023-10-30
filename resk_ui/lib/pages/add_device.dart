@@ -1,6 +1,7 @@
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
+import 'package:resk_ui/controllers.dart';
 import 'package:resk_ui/main.dart';
 
 class AddDevicePage extends StatefulWidget {
@@ -65,14 +66,34 @@ class AddDevicePageState extends State<AddDevicePage> {
     );
   }
 
+  final Future<String> _loadData = Future<String>(() async {
+    final response = await sendMsgNode("get_peers:");
+    return response;
+  });
+
   Widget selectLocalPeersWidget(BuildContext context) {
-    return Container(
-      padding: const EdgeInsetsDirectional.only(top: 10),
-      child: const Text(
-        'Or select from local network',
-        style: TextStyle(fontSize: 20),
-      ),
-    );
+    return FutureBuilder<String>(
+        future: _loadData,
+        builder: (BuildContext builder, AsyncSnapshot<String> snapshot) {
+          if (snapshot.hasData) {
+            final String response = snapshot.data!;
+            return Container(
+              padding: const EdgeInsetsDirectional.only(top: 10),
+              child: Text(
+                'Or select from local network: $response',
+                style: const TextStyle(fontSize: 20),
+              ),
+            );
+          } else {
+            return Container(
+              padding: const EdgeInsetsDirectional.only(top: 10),
+              child: const Text(
+                'Or select from local network',
+                style: TextStyle(fontSize: 20),
+              ),
+            );
+          }
+        });
   }
 
   @override

@@ -5,6 +5,7 @@
 ))]
 use clipboard::{ClipboardContext, ClipboardProvider};
 use libp2p::swarm::dial_opts::DialOpts;
+use tokio::sync::RwLock;
 
 #[cfg(any(target_os = "android", target_os = "ios"))]
 use crate::mobile::MobileClipboard;
@@ -12,6 +13,7 @@ use crate::mobile::MobileClipboard;
 use crate::utils::send_udp_msg_flutter;
 
 use futures::{future::Either, StreamExt};
+use lazy_static::lazy_static;
 use libp2p::core::transport;
 use libp2p::kad::store::MemoryStore;
 use libp2p::kad::{self, Kademlia};
@@ -82,61 +84,61 @@ macro_rules! mobile {
     };
 }
 
+lazy_static! {
+    pub static ref FLUTTER_UDP_PORT: RwLock<i32> = RwLock::new(0);
+}
+
 pub async fn run_node(
     flutter_udp_port: Option<i32>,
 ) -> Result<(), Box<dyn Error>> {
+    if flutter_udp_port != None {
+        let mut port = FLUTTER_UDP_PORT.write().await;
+        *port = flutter_udp_port.unwrap();
+    }
+
     let mut app_dir_path: Option<String> = None;
     desktop!({
         pretty_env_logger::init();
         app_dir_path = None;
     });
     mobile!({
-        app_dir_path = Some(
-            send_udp_msg_flutter(
-                "data_dir:".to_string(),
-                &flutter_udp_port.unwrap(),
-            )
-            .await?,
-        );
+        app_dir_path =
+            Some(send_udp_msg_flutter("data_dir:".to_string()).await?);
     });
 
     // Init keys
-    let (local_key, local_peer_id) =
-        get_keys(app_dir_path.clone(), flutter_udp_port).await?;
-    println!("Local peer id: {}", &local_peer_id.to_string());
+    let (local_key, local_peer_id) = get_keys(app_dir_path.clone()).await?;
     log::info!("Local peer id: {}", &local_peer_id.to_string());
 
-    // Listener for sending data to client apps
     desktop! {
-        let backend_listener = init_backend_listener().await?
-    }
-    mobile! {
-        let backend_listener = init_backend_listener(app_dir_path.unwrap()).await?
-    }
-
-    // Clipboard management
-    desktop! {
+        // Listener for sending data to client apps
+        let backend_listener = init_backend_listener().await?;
+        // Clipboard management
         let mut clipboard: ClipboardContext =
             ClipboardProvider::new().expect("Failed to init clipboard")
-    };
+    }
     mobile! {
-        let mut clipboard: MobileClipboard =
-            MobileClipboard::new(flutter_udp_port.clone().unwrap())
-                .expect("Failed to init clipboard")
+        let backend_listener = init_backend_listener(app_dir_path.unwrap()).await?;
 
-    };
+        let mut clipboard: MobileClipboard =
+            MobileClipboard::new().await
+                .expect("Failed to init clipboard")
+    }
 
     // Communications betwen threads
     // let (sender, mut receiver) = mpsc::channel(8192);
 
     // Store active peers
+    // List that is used when sending data to client apps
     let mut peers_online: Vec<(String, String)> = vec![];
+    // Raw list for internal usage
     let mut peers_online_system: Vec<(PeerId, Multiaddr)> = vec![];
 
     let transport = build_transport(&local_key).await?;
 
     // Topic used to send clipboard updates
     let update_topic = gossipsub::IdentTopic::new("resk-update");
+    let request_topic = gossipsub::IdentTopic::new("resk-request");
 
     // Build swarm
     let mut swarm = {
@@ -158,6 +160,7 @@ pub async fn run_node(
 
         // Subscribe to topics
         gossipsub.subscribe(&update_topic)?;
+        gossipsub.subscribe(&request_topic)?;
 
         // kademlia config
         let store = MemoryStore::new(local_peer_id);
@@ -174,12 +177,6 @@ pub async fn run_node(
     swarm.listen_on("/ip4/0.0.0.0/udp/0/quic-v1".parse()?)?;
     swarm.listen_on("/ip4/0.0.0.0/tcp/0".parse()?)?;
 
-    // Pooling to share clipboard
-    /*     tokio::spawn(start_pooling_clipboard(
-        sender.clone(),
-        flutter_udp_port.clone(),
-    )); */
-    // Load known peers
     let known_peers: Vec<PeerId> = load_known_peers()?;
 
     // Main pool
@@ -188,174 +185,107 @@ pub async fn run_node(
     loop {
         buf.clear();
         select! {
-                    // Listen for requests from client apps
-                    request = backend_listener.recv_buf_from(&mut buf) => match request {
-                        Ok((_, addr)) => {
-                            let request = String::from_utf8_lossy(&buf).to_string();
-                            let mut response = String::new();
-                            match request.split(":").nth(0).unwrap() {
-                                    "is_alive" => {
-                                        response = "1".to_string();
-                                    }
-                                    "get_peers" => {
-                                        peers_online.clone().into_iter().for_each(|(peer_id, addr)| {
-                                            response.push_str(format!("{peer_id}:{addr:?},").as_str())
-                                        });
-                                    }
-                                    "add_peer" => {
-                                        let peer_id = request.split(":").nth(1).unwrap();
-                                        let peer_id: PeerId = peers_online_system
-                                            .clone()
-                                            .into_iter()
-                                            .filter(|chunk| chunk.0.to_string() == peer_id)
-                                            .nth(0).unwrap().0;
-                                        swarm.behaviour_mut().gossipsub.add_explicit_peer(&peer_id);
-                                        save_peer(&peer_id).unwrap_or_else(|err| {log::error!("{err}")});
-                                        response.push_str("OK");
-                                    }
-                                    "local_peer_id" => {
-                                        response.push_str(&local_peer_id.to_string());
-                                    }
-                                    "get_peer_os" => {
-                                        let peer_id = request.split(":").nth(1).unwrap();
-                                        let key = kad::record::Key::new(&format!("{}_OS", peer_id));
-                                        swarm.behaviour_mut().kademlia.get_record(key);
-                                    }
-                                    _ => {
-                                        response.push_str("Incorrect request");},
+            // Listen for requests from client apps
+            request = backend_listener.recv_buf_from(&mut buf) => match request {
+                Ok((_, addr)) => {
+                    let request = String::from_utf8_lossy(&buf).to_string();
+                    let mut response = String::new();
+                    match request.split(":").nth(0).unwrap() {
+                            "is_alive" => {
+                                response = "1".to_string();
+                            }
+                            "get_peers" => {
+                                peers_online.clone().into_iter().for_each(|(peer_id, addr)| {
+                                    response.push_str(format!("{peer_id}:{addr:?},").as_str())
+                                });
+                            }
+                            "add_peer" => {
+                                let peer_id = request.split(":").nth(1).unwrap();
+                                let peer_id: PeerId = peers_online_system
+                                    .clone()
+                                    .into_iter()
+                                    .filter(|chunk| chunk.0.to_string() == peer_id)
+                                    .nth(0).unwrap().0;
+                                swarm.behaviour_mut().gossipsub.add_explicit_peer(&peer_id);
+                                save_peer(&peer_id).unwrap_or_else(|err| {log::error!("{err}")});
+                                response.push_str("OK");
+                            }
+                            "local_peer_id" => {
+                                response.push_str(&local_peer_id.to_string());
+                            }
+                            "get_content" => {
+                                let peer_id = request.split(":").nth(1).unwrap();
+                                swarm.behaviour_mut().gossipsub.publish(request_topic.clone(), peer_id.as_bytes())?;
+                            }
+                            "send_content" => {
+                                let mut content: String = request.split(":").nth(1).unwrap().to_string();
+                                content.retain(|c| c!= '\'');
+                                swarm.behaviour_mut().gossipsub.publish(update_topic.clone(), content.as_bytes())?;
+                            }
+                            _ => {
+                                response.push_str("Incorrect request");},
 
-                                    }
-                            backend_listener.send_to(response.as_bytes(), addr).await.expect("Failed to ping back from server");
-                        }
-                        Err(e) => {
-                            log::error!("Error obtaining request from client app: {e:?}");
-                        }
-                    },
-                    // Listen for swarm events
-                    event = swarm.select_next_some() => match event {
-                        SwarmEvent::NewListenAddr { address, .. } => log::info!("Listening on {address:?}"),
-                        SwarmEvent::Behaviour(BehaviourEvent::Mdns(mdns::Event::Discovered(peers_list))) => {
-                            peers_list.clone().into_iter().for_each(|(peer_id, addr)| {
-                                // Store OS of node in network
-                                // STORE ONLY PUBLIC DATA IN KAD
-                                swarm.behaviour_mut().kademlia.add_address(&peer_id, addr);
-                            });
-
-                            // Store active peers
-                            if !peers_list.is_empty(){
-                                peers_online_system.extend(peers_list.clone());
                             }
-                            let peers_list = filter_incoming_peers(&peers_online, peers_list);
-                            if !peers_list.is_empty() {
-                                if !known_peers.is_empty() {
-                                    let peer_id = PeerId::from_str(&peers_list.clone().into_iter().nth(0).unwrap().0)?;
-                                    if known_peers.contains(&peer_id) {
-                                        swarm.behaviour_mut().gossipsub.add_explicit_peer(&peer_id);
-                                    }
-                                }
-                                peers_online.extend(peers_list);
-                            }
-                            sleep(Duration::from_secs(3)).await;
-                            let key =
-                                kad::record::Key::new(&format!("{}_OS", local_peer_id.to_string()));
-                            let record =
-                                kad::Record::new(key.clone(), std::env::consts::OS.as_bytes().to_vec());
-                            swarm
-                                .behaviour_mut()
-                                .kademlia
-                                .put_record(record, kad::Quorum::One).expect("Failed to put record");
-                            swarm.behaviour_mut().kademlia.start_providing(key.clone()).expect("Failed to start providing");
-                        }
-                        SwarmEvent::Behaviour(BehaviourEvent::Mdns(mdns::Event::Expired(peers_list))) => {
-                            // Remove expired peers: it will be every 3 sec
-                            peers_online_system.retain(|chunk| !peers_list.contains(&chunk));
-                            let peers_list: Vec<(String, String)> = peers_list
-                                .into_iter()
-                                .map(|(peer_id, addr)| {
-                                    (
-                                        peer_id.to_string(),
-                                        addr.to_string().split('/').nth(2).unwrap().to_string(),
-                                    )
-                                })
-                                .collect();
-                            peers_online.retain(|chunk| !peers_list.contains(&chunk));
-                        }
-                        SwarmEvent::Behaviour(BehaviourEvent::Gossipsub(gossipsub::Event::Message { propagation_source: _peer_id, message_id: _id, message })) => {
-                            let msg_str = String::from_utf8_lossy(&message.data);
-                            if message.topic.clone() == update_topic.hash() {
-                                clipboard.set_contents(msg_str.to_string())?;
-                            }
-                        }
-                        SwarmEvent::Behaviour(BehaviourEvent::Kademlia(kad::KademliaEvent::OutboundQueryProgressed {result, ..})) => {
-                            match result {
-                                kad::QueryResult::GetProviders(Ok(kad::GetProvidersOk::FoundProviders { key, providers, .. })) => {
-                        for peer in providers {
-                            println!(
-                                "Peer {peer:?} provides key {:?}",
-                                std::str::from_utf8(key.as_ref()).unwrap()
-                            );
-                        }
-                    }
-                    kad::QueryResult::GetProviders(Err(err)) => {
-                        eprintln!("Failed to get providers: {err:?}");
-                    }
-                    kad::QueryResult::GetRecord(Ok(
-                        kad::GetRecordOk::FoundRecord(kad::PeerRecord {
-                            record: kad::Record { key, value, .. },
-                            ..
-                        })
-                    )) => {
-                        println!(
-                            "Got record {:?} {:?}",
-                            std::str::from_utf8(key.as_ref()).unwrap(),
-                            std::str::from_utf8(&value).unwrap(),
-                        );
-                    }
-                    kad::QueryResult::GetRecord(Ok(_)) => {}
-                    kad::QueryResult::GetRecord(Err(err)) => {
-                        eprintln!("Failed to get record: {err:?}");
-                    }
-                    kad::QueryResult::PutRecord(Ok(kad::PutRecordOk { key })) => {
-                        println!(
-                            "Successfully put record {:?}",
-                            std::str::from_utf8(key.as_ref()).unwrap()
-                        );
-                    }
-                    kad::QueryResult::PutRecord(Err(err)) => {
-                        eprintln!("Failed to put record: {err:?}");
-                    }
-                    kad::QueryResult::StartProviding(Ok(kad::AddProviderOk { key })) => {
-                        println!(
-                            "Successfully put provider record {:?}",
-                            std::str::from_utf8(key.as_ref()).unwrap()
-                        );
-                    }
-                    kad::QueryResult::StartProviding(Err(err)) => {
-                        eprintln!("Failed to put provider record: {err:?}");
-                    }
-                    _ => {}
-                            }
-                        }
-                        _ => {}
-                    },
-                    // Listen for clipboard updates from pooler
-        /*             update = receiver.recv() => match update {
-                        Some(updated_clipboard) => {
-                            if swarm.behaviour_mut().gossipsub.all_peers().count() > 0 {
-                               swarm.behaviour_mut().gossipsub.publish(update_topic.clone(), updated_clipboard.as_bytes())?;
-                               log::info!("Shared clipboar content with peers");
-                            }
-                        }
-                        _ => {}
-                    } */
+                    backend_listener.send_to(response.as_bytes(), addr).await.expect("Failed to send response from server");
                 }
+                Err(e) => {
+                    log::error!("Error obtaining request from client app: {e:?}");
+                }
+            },
+            // Listen for swarm events
+            event = swarm.select_next_some() => match event {
+                SwarmEvent::NewListenAddr { address, .. } => log::info!("Listening on {address:?}"),
+                SwarmEvent::Behaviour(BehaviourEvent::Mdns(mdns::Event::Discovered(peers_list))) => {
+                    // Store active peers
+                    if !peers_list.is_empty(){
+                        peers_online_system.extend(peers_list.clone());
+                    }
+                    let peers_list = filter_incoming_peers(&peers_online, peers_list);
+                    // Check if discovered peer in known peers, if yes -> add in gossipsub
+                    if !peers_list.is_empty() {
+                        if !known_peers.is_empty() {
+                            let peer_id = PeerId::from_str(&peers_list.clone().into_iter().nth(0).unwrap().0)?;
+                            if known_peers.contains(&peer_id) {
+                                swarm.behaviour_mut().gossipsub.add_explicit_peer(&peer_id);
+                            }
+                        }
+                        peers_online.extend(peers_list);
+                    }
+                }
+                SwarmEvent::Behaviour(BehaviourEvent::Mdns(mdns::Event::Expired(peers_list))) => {
+                    // Remove expired peers, will happen every minute
+                    peers_online_system.retain(|chunk| !peers_list.contains(&chunk));
+                    let peers_list: Vec<(String, String)> = peers_list
+                        .into_iter()
+                        .map(|(peer_id, addr)| {
+                            (
+                                peer_id.to_string(),
+                                addr.to_string().split('/').nth(2).unwrap().to_string(),
+                            )
+                        })
+                        .collect();
+                    peers_online.retain(|chunk| !peers_list.contains(&chunk));
+                }
+                SwarmEvent::Behaviour(BehaviourEvent::Gossipsub(gossipsub::Event::Message { propagation_source: _source_peer_id, message_id: _message_id, message })) => {
+                    let msg_str = String::from_utf8_lossy(&message.data);
+                    // If topic is update - set clipboard to its message
+                    if message.topic.clone() == update_topic.hash() {
+                        clipboard.set_contents(msg_str.to_string())?;
+                    }
+                    // If topic is request and message is peer id of this node, publish update topic with clipboard content
+                    if message.topic.clone() == request_topic.hash() {
+                        if msg_str == local_peer_id.to_string() {
+                            swarm.behaviour_mut().gossipsub.publish(update_topic.clone(), clipboard.get_contents()?.as_bytes())?;
+                        }
+                    }
+                }
+                _ => {}
+            },
+        }
     }
 }
 
-async fn start_pooling_clipboard(
-    sender: Sender<String>,
-    flutter_udp_port: Option<i32>,
-) {
+async fn start_pooling_clipboard(sender: Sender<String>) {
     // Init clipboard
     desktop! {
         let mut clipboard: ClipboardContext =
@@ -363,7 +293,7 @@ async fn start_pooling_clipboard(
     };
     mobile! {
         let mut clipboard: MobileClipboard =
-            MobileClipboard::new(flutter_udp_port.clone().unwrap())
+            MobileClipboard::new().await
                 .expect("Failed to init clipboard")
 
     };

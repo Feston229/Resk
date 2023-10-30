@@ -1,3 +1,4 @@
+use crate::controllers::FLUTTER_UDP_PORT;
 use libp2p::{identity::Keypair, PeerId};
 use serde_json::{Map, Value};
 use std::{
@@ -33,7 +34,6 @@ lazy_static! {
 
 pub async fn get_keys(
     data_dir: Option<String>,
-    flutter_udp_port: Option<i32>,
 ) -> Result<(Keypair, PeerId), Box<dyn Error>> {
     // Declaration
     let shared_dir_path: String;
@@ -45,11 +45,7 @@ pub async fn get_keys(
         data_dir_path = APP_DIR.clone();
     });
     mobile!({
-        shared_dir_path = send_udp_msg_flutter(
-            "root_dir:".to_string(),
-            &flutter_udp_port.unwrap(),
-        )
-        .await?;
+        shared_dir_path = send_udp_msg_flutter("root_dir:".to_string()).await?;
         data_dir_path =
             Path::new(&data_dir.unwrap().trim_matches('\0')).to_path_buf();
     });
@@ -210,8 +206,8 @@ pub async fn init_backend_listener(
 #[cfg(any(target_os = "android", target_os = "ios"))]
 pub async fn send_udp_msg_flutter(
     request: String,
-    port: &i32,
 ) -> Result<String, Box<dyn Error>> {
+    let port = FLUTTER_UDP_PORT.read().await;
     let socket = UdpSocket::bind("127.0.0.1:0").await?;
     let server_addr = format!("127.0.0.1:{port}");
     socket.send_to(request.as_bytes(), server_addr).await?;

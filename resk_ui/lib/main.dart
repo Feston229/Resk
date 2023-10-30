@@ -22,7 +22,7 @@ Future<void> main() async {
   // Mobile specific settings
   if (Platform.isAndroid || Platform.isIOS) {
     await requestPermissions();
-    //await initializeService();
+    await initializeService();
     await initPlatformData();
   }
 

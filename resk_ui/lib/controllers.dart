@@ -85,9 +85,17 @@ Future<void> initializeService() async {
       .resolvePlatformSpecificImplementation<
           AndroidFlutterLocalNotificationsPlugin>()
       ?.createNotificationChannel(channel);
+
+  flutterLocalNotificationsPlugin.initialize(
+      const InitializationSettings(
+          android: AndroidInitializationSettings('ic_bg_service_small')),
+      onDidReceiveNotificationResponse: onSelectNotificationAction,
+      onDidReceiveBackgroundNotificationResponse: onSelectNotificationAction);
+
   await service.configure(
       iosConfiguration: IosConfiguration(),
       androidConfiguration: AndroidConfiguration(
+          foregroundServiceNotificationId: notificationId,
           onStart: onStart,
           autoStart: true,
           isForegroundMode: true,
@@ -97,23 +105,36 @@ Future<void> initializeService() async {
 Future<void> onStart(ServiceInstance service) async {
   DartPluginRegistrant.ensureInitialized();
 
+  // Spawn node
   final RootIsolateToken rootIsolateToken = RootIsolateToken.instance!;
   Isolate.spawn(runNode, await initDataSet(rootIsolateToken));
 
   final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
       FlutterLocalNotificationsPlugin();
 
-  while (true) {
-    sleep(const Duration(seconds: 1));
-    flutterLocalNotificationsPlugin.show(
-        notificationId,
-        'Resk',
-        'You are not connected!',
-        const NotificationDetails(
-            android: AndroidNotificationDetails(
-                notificationChannelId, 'RESK FOREGROUND SERVICE',
-                icon: 'ic_bg_service_small', ongoing: true)));
-  }
+  final List<AndroidNotificationAction> actions = [
+    const AndroidNotificationAction('1', 'Send'),
+    const AndroidNotificationAction('2', 'Get')
+  ];
+
+  // Show connected devices
+  flutterLocalNotificationsPlugin.show(
+      notificationId,
+      'Resk',
+      'You are not connected!',
+      NotificationDetails(
+          android: AndroidNotificationDetails(
+              notificationChannelId, 'RESK FOREGROUND SERVICE',
+              actions: actions,
+              playSound: false,
+              icon: 'ic_bg_service_small',
+              ongoing: true)));
+}
+
+void onSelectNotificationAction(NotificationResponse response) async {
+  log.i('actionId -> ${response.actionId}');
+  log.i('payload -> ${response.payload}');
+  log.i('input -> ${response.input}');
 }
 
 Future<void> initPlatformData() async {
@@ -143,9 +164,11 @@ Future<String> sendMsgNode(String msg) async {
 
   socket.listen((RawSocketEvent event) {
     if (event == RawSocketEvent.read) {
-      Datagram datagram = socket.receive()!;
-      completer.complete(utf8.decode(datagram.data));
-      socket.close();
+      Datagram? datagram = socket.receive();
+      if (datagram != null) {
+        completer.complete(utf8.decode(datagram.data));
+        socket.close();
+      }
     }
   });
   return completer.future;

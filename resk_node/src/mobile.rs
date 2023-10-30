@@ -1,4 +1,5 @@
 // Mobile specific code
+use crate::controllers::FLUTTER_UDP_PORT;
 use std::error::Error;
 use std::net::UdpSocket;
 
@@ -8,10 +9,11 @@ pub struct MobileClipboard {
 }
 
 impl MobileClipboard {
-    pub fn new(port: i32) -> Result<Self, Box<dyn Error>> {
+    pub async fn new() -> Result<Self, Box<dyn Error>> {
+        let port = FLUTTER_UDP_PORT.read().await;
         Ok(MobileClipboard {
             socket: UdpSocket::bind("127.0.0.1:0")?,
-            port,
+            port: *port,
         })
     }
     fn send_udp_request_flutter(
@@ -34,8 +36,15 @@ impl MobileClipboard {
     // Send udp request to get it from flutter
     pub fn set_contents(
         &mut self,
-        _contents: String,
+        content: String,
     ) -> Result<(), Box<dyn Error>> {
+        if self.send_udp_request_flutter(format!("set_content:{}", content))?
+            != "OK"
+        {
+            log::error!("Failed to send clipboard to flutter");
+        } else {
+            log::info!("Sent clipboard to flutter");
+        }
         Ok(())
     }
 }
